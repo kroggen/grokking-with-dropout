@@ -1,6 +1,4 @@
 import argparse
-import copy
-import itertools
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, Subset
@@ -14,10 +12,7 @@ from models import MLP, Transformer
 from binary_operations import (product_mod,
                                add_mod,
                                subtract_mod)
-from constants import GPU, FLOAT_PRECISION_MAP
-
-import torch
-
+from constants import  FLOAT_PRECISION_MAP
 
 
 
@@ -34,10 +29,10 @@ def cross_entropy_float64(logits, labels, reduction="mean"):
     return loss.to(torch.float32)
 
 
-def s(x):
+def s(x, epsilon=1e-30):
     return torch.where(
         x<0,
-        1/(1-x),
+        1/(1-x+ epsilon),
         x + 1
     )
 
@@ -112,40 +107,6 @@ def evaluate(model, data_loader, loss_function=cross_entropy_float64):
     return loss, accuracy
 
 
-def evaluate_transformer(model, data_loader, loss_function=cross_entropy_high_precision):
-    model.eval()
-    loss = 0
-    correct = 0
-    device = next(model.parameters()).device
-    float_precision = next(model.parameters()).dtype
-    with torch.no_grad():
-        for data, target, *_ in data_loader:
-            label_argmax = len(target.shape)!=1
-            output = model(data.to(device)).to("cpu")[:, -1]
-            loss += loss_function(output, target).item()
-            pred = output.argmax(dim=1, keepdim=True)
-            if label_argmax:
-                target = target.argmax(dim=1)
-            correct += pred.eq(target.to("cpu").view_as(pred)).sum().item()
-    loss /= len(data_loader)
-    accuracy = 100 * correct / len(data_loader.dataset)
-    return loss, accuracy
-
-def evaluate_full_batch(model, data, target, loss_function=cross_entropy_high_precision):
-    
-    model.eval()
-    loss = 0
-    correct = 0
-    device = next(model.parameters()).device
-    with torch.no_grad():
-        output = model(data.to(device)).to("cpu")#[:, -1]
-        loss += loss_function(output, target.to("cpu")).item()
-        pred = output.argmax(dim=1, keepdim=True)
-        correct += pred.eq(target.argmax(dim=1).to("cpu").view_as(pred)).sum().item()
-    loss /= len(target)
-    accuracy = 100. * correct / len(target)
-    return loss, accuracy
-
 
 def get_specified_args(parser, args):
 
@@ -155,7 +116,8 @@ def get_specified_args(parser, args):
     
     specified = {arg: getattr(args, arg)
                  for arg in vars(args)
-                 if getattr(args, arg) != defaults.get(arg)}
+                 if getattr(args, arg) != defaults.get(arg)
+                 and arg!="device"}
     
     return specified
 
@@ -227,21 +189,20 @@ def get_model(args):
     device = args.device
 
     if args.dataset == "sparse_parity":
-        model = MLP(input_size= args.num_parity_features + args.num_noise_features, output_size=2, hidden_sizes=args.hidden_sizes, 
-                    freeze_layers=args.freeze_layers).to(device) 
+        model = MLP(input_size= args.num_parity_features + args.num_noise_features, output_size=2, 
+                    hidden_sizes=args.hidden_sizes).to(device) 
+
     elif args.dataset == "MNIST":
-        model = MLP(input_size=28*28, output_size=10, hidden_sizes=args.hidden_sizes, 
-                    freeze_layers=args.freeze_layers).to(device)
+        model = MLP(input_size=28*28, output_size=10, hidden_sizes=args.hidden_sizes).to(device)
         with torch.no_grad():
             for name, p in model.named_parameters():
                 p.data = 100. * p.data
 
     elif args.dataset == "binary_alg":
-        model = MLP(input_size=(args.input_size - 1).bit_length()*2, output_size=args.modulo, hidden_sizes=args.hidden_sizes, 
-                        freeze_layers=args.freeze_layers).to(device)
+        model = MLP(input_size=(args.input_size - 1).bit_length()*2, output_size=args.modulo, 
+                    hidden_sizes=args.hidden_sizes).to(device)
     elif args.dataset == "scalar_alg":
-        model = MLP(input_size=2, output_size=args.modulo, hidden_sizes=args.hidden_sizes, 
-                        freeze_layers=args.freeze_layers).to(device)
+        model = MLP(input_size=2, output_size=args.modulo, hidden_sizes=args.hidden_sizes).to(device)
                     
     else:
         print("Using AlgorithmicDataset")
@@ -254,11 +215,11 @@ def get_model(args):
         
 def get_optimizer(model, args):
     if args.optimizer == "Adam":
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), weight_decay=0, eps=1e-8)#, weight_decay=WEIGHT_DECAY)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), weight_decay=0, eps=args.adam_epsilon)#, weight_decay=WEIGHT_DECAY)
     elif args.optimizer == "AdamW":
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=1e-30, betas=(0.9, 0.99))#, betas=(0.9, 0.98))
+        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.adam_epsilon, betas=(0.9, args.beta2))#, betas=(0.9, 0.98))
     elif args.optimizer == "SGD":
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.8, weight_decay=0)
+        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.2, weight_decay=0)
     else: 
         raise ValueError(f'Unsupported optimizer type: {args.optimizer}')
     return optimizer
@@ -337,7 +298,7 @@ def parse_args():
     parser.add_argument('--scale_down', type=str, default="None",
                         help='Option to scale down data. Default is None.')
 
-    parser.add_argument('--float_precision', type=int, default=32,
+    parser.add_argument('--softmax_precision', type=int, default=32,
                         help='Floating point precision for the loss calculation: 16, 32, or 64. Default is 32.')
     
     parser.add_argument('--train_precision', type=int, default=32,
@@ -359,5 +320,9 @@ def parse_args():
 
     parser.add_argument('--device', type=str, default="cpu",
                         help='Device')
+    parser.add_argument('--beta2', type=float, default=0.99,
+                        help='Beta2 parameter for Adam and AdamW')
+    parser.add_argument('--adam_epsilon', type=float, default=1e-25,
+                        help='Epsilon value for Adam and AdamW')
 
     return parser, parser.parse_args()

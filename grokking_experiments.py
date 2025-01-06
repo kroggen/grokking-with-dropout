@@ -4,18 +4,14 @@ import torch
 import torch.nn as nn
 import json
 import os
-import pdb
+from orthograd import OrthoGrad
 from constants import FLOAT_PRECISION_MAP
 from logger import MetricsLogger
 from torch.utils.data import DataLoader
 from utils import (evaluate, 
-                   cross_entropy_high_precision,
-                   stable_cross_entropy,
-                   stable_sum,
+                   cross_entropy_float16,
                    cross_entropy_float32,
-                   kahan_cross_entropy,
-                   kahan_sum,
-                   cross_entropy_low_precision,
+                   cross_entropy_float64,
                    get_specified_args,
                    get_dataset,
                    get_model,
@@ -24,43 +20,11 @@ from utils import (evaluate,
                    stablemax_cross_entropy)
 
 
-class OrthoGrad(torch.optim.Optimizer):
-    def __init__(self, params, base_optimizer_cls, **base_optimizer_args):
-        params = list(params)
-        defaults = {}
-        super().__init__(params, defaults)
-        self.base_optimizer = base_optimizer_cls(params, **base_optimizer_args)
-        self.param_groups = self.base_optimizer.param_groups
-
-    @staticmethod
-    def _orthogonalize_gradients(params):
-        for p in params:
-            if p.grad is not None:
-                w = p.data.view(-1)
-                g = p.grad.data.view(-1)
-
-                squared_norm = torch.dot(w, w) + 1e-30
-                proj = torch.dot(w, g) / squared_norm
-                g_orth = g - proj * w
-
-                norm_g = torch.norm(g, p=2)
-                norm_g_orth = torch.norm(g_orth, p=2) + 1e-30
-                g_orth_scaled = g_orth * (norm_g / norm_g_orth)
-
-                p.grad.data.copy_(g_orth_scaled.view(p.grad.shape))
-
-    def step(self, closure=None):
-        for group in self.param_groups:
-            self._orthogonalize_gradients(group['params'])
-        return self.base_optimizer.step(closure)
-
-
 torch.set_num_threads(5) 
 random.seed(2)
 torch.manual_seed(42)
 parser, args = parse_args()
 
-FLOAT_PRECISION = FLOAT_PRECISION_MAP[args.float_precision]
 train_precision = FLOAT_PRECISION_MAP[args.train_precision]
 
 device = args.device
@@ -92,7 +56,12 @@ if args.orthogonal_gradients:
         'lr': args.lr,
         'weight_decay': args.weight_decay
     }
+    if args.optimizer=="SGD":
+        optimizer_args["momentum"] = 0.8
+    else:
+        betas=(0.9, args.beta2)
     optimizer = OrthoGrad(model.parameters(), base_optimizer_cls, **optimizer_args)
+    
     optimizer.load_state_dict(base_state_dict)
 else:
     optimizer = base_optimizer
@@ -100,18 +69,13 @@ else:
 
 print(args.loss_function)
 cross_entropy_function = {
-    16: cross_entropy_low_precision,
+    16: cross_entropy_float16,
     32: cross_entropy_float32,
-    64: cross_entropy_high_precision
+    64: cross_entropy_float64
 }
 
 loss_functions = {
-    "label_smoothing": torch.nn.CrossEntropyLoss(label_smoothing=0.2),
-    "cross_entropy": cross_entropy_function[args.float_precision],
-    "l1": nn.L1Loss(),
-    "MSE": nn.MSELoss(),
-    "stable_ce": stable_cross_entropy,
-    "kahan": kahan_cross_entropy,
+    "cross_entropy": cross_entropy_function[args.softmax_precision],
     "stablemax": stablemax_cross_entropy
 }
 loss_function = loss_functions[args.loss_function]
@@ -121,22 +85,20 @@ saved_models = {epoch: None for epoch in save_model_checkpoints}
 softmax_temperature = 1
 
 if args.full_batch:
-    # Load full training data and targets
     all_data = train_dataset.dataset.data[train_dataset.indices].to(device).to(train_precision)
     all_targets = train_dataset.dataset.targets[train_dataset.indices].to(device).long()
 
-    # Load full test data and targets
     all_test_data = test_dataset.dataset.data[test_dataset.indices].to(device).to(train_precision)
     all_test_targets = test_dataset.dataset.targets[test_dataset.indices].to(device).long()
 else:
-    # If full_batch == False, you would need to handle differently.
-    # The user requested full batch scenario, so we assume args.full_batch is True.
-    pass
+    raise ValueError("Current implementation only supports full batch training.")
 
 loss = torch.inf
 start_time = time.time()
-model.to(device)
+model.to(device).to(train_precision)
 for epoch in range(args.num_epochs):
+    #Shuffling the data should not matter for full batch GD, 
+    #but it does matter because of floating point errors
     permutation = torch.randperm(all_data.size(0))
     shuffled_data = all_data[permutation]
     shuffled_targets = all_targets[permutation]
@@ -173,7 +135,7 @@ for epoch in range(args.num_epochs):
 model.eval().to('cpu')
 test_loss, test_accuracy = evaluate(model, test_loader)
 print(f'Test set: Average loss: {test_loss:.4f}, Accuracy: {test_accuracy:.2f}')
-args.lr = args.lr*(args.alpha**2)
+args.lr = args.lr
 
 specified_args = get_specified_args(parser, args)
 if len(specified_args.keys()) == 0:

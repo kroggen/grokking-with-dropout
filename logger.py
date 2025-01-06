@@ -1,7 +1,6 @@
 import torch
 import copy
 import pandas as pd
-from utils import stable_sum, kahan_sum
 import pdb
 
 
@@ -24,7 +23,6 @@ class MetricsLogger:
             "weights_l2": self.compute_weights_l2,
             "zero_terms": self.compute_zero_terms,
             "softmax_collapse": self.compute_softmax_collapse,
-            "exponential_underflow": self.compute_exponential_underflow,
         }
 
         self.metrics_df = pd.DataFrame(columns=["epoch", "input_type", "metric_name", "layer", "value"])
@@ -132,7 +130,7 @@ class MetricsLogger:
     def compute_weights_l2(self, model, epoch, epoch_position, args, loss_function):
         results = []
         for name, param in model.named_parameters():
-            val = param.square().mean().item()
+            val = param.square().sum().sqrt().item()
             results.append({
                 "epoch": epoch_position,
                 "input_type": "general",
@@ -158,12 +156,11 @@ class MetricsLogger:
             64: torch.float64,
             32: torch.float32,
             16: torch.float16
-        }[args.float_precision]
+        }[args.softmax_precision]
         output = self._train_output.to(float_precision)
         output_off = output - output.amax(dim=1, keepdim=True)
         exp_output = torch.exp(output_off)
-        sum_function = kahan_sum if args.loss_function == "stable_ce" else torch.sum
-        sum_exp = sum_function(exp_output, dim=-1, keepdim=True)
+        sum_exp = torch.sum(exp_output, dim=-1, keepdim=True)
         log_softmax = output_off.amax(dim=1, keepdim=True)- torch.log(sum_exp)
         softmax_collapse = (sum_exp==1).float().mean().item()
 
@@ -173,21 +170,4 @@ class MetricsLogger:
             "metric_name": "softmax_collapse",
             "layer": None,
             "value": softmax_collapse
-        }]
-
-    def compute_exponential_underflow(self, model, epoch, epoch_position, args, loss_function):
-        output = self._train_output
-        output_off = output - output.amax(dim=1, keepdim=True)
-        exp_output = torch.exp(output_off)
-        sum_function = stable_sum if args.loss_function == "stable_ce" else torch.sum
-        sum_exp = sum_function(exp_output, dim=-1, keepdim=True)
-        ratio = exp_output / (sum_exp + 1e-45)
-        exponential_underflow = ((ratio == 0) | (sum_exp == 0)).float().mean().item()
-
-        return [{
-            "epoch": epoch_position,
-            "input_type": "train",
-            "metric_name": "exponential_underflow",
-            "layer": None,
-            "value": exponential_underflow
         }]

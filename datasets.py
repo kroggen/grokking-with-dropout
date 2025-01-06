@@ -1,11 +1,8 @@
 import torch
 from torch.utils.data import Dataset
 import torchvision.datasets as datasets
-from torchvision import transforms
 import random
 from constants import DEFAULT_MODULO
-import numpy as np
-from PIL import Image
 import itertools
 
 def one_hot_encode(number, size):
@@ -153,7 +150,7 @@ class SparseParityDataset(Dataset):
     
         self.data = torch.tensor(list(unique_random_combinations(num_features + self.num_noise_features, self.num_samples)))
         self.targets = (self.data[:,:num_features].sum(dim=1)%2).float()
-        self.targets = torch.nn.functional.one_hot(self.targets.long(), 2).float()
+        self.targets = self.targets.long()
     
     def __len__(self):
         return self.num_samples

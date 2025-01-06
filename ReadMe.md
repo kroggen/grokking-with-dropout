@@ -4,5 +4,5 @@ This is the accompanying code for the _Grokking at the Edge of Numerical Stabili
 
 ## Replicating paper plots
 
-Rubning `run_main_experiments.sh` will generate and log all the metrics necessary to replicate the main figures in the paper. After runing this file you can generate the plots with the code in `paper_plots.ipynb`.
+Running `run_main_experiments.sh` will generate and log all the metrics necessary to replicate the main figures in the paper. After runing this file you can generate the plots with the code in `paper_plots.ipynb`.
 
