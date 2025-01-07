@@ -4,7 +4,7 @@
   <p align="center">
     <a href="https://safeandtrustedai.org/person/lucas-prieto/"><strong>Lucas Prieto</strong></a>
     ·
-    <a href="https://scholar.google.com.tr/citations?user=cmDBJlEAAAAJ&hl=en"><strong>Melih Barsbey</strong></a><sup>2</sup>
+    <a href="https://scholar.google.com.tr/citations?user=cmDBJlEAAAAJ&hl=en"><strong>Melih Barsbey</strong></a>
     ·
     <a href="https://pmediano.gitlab.io"><strong>Pedro Mediano</strong></a><sup>*</sup>
     ·
@@ -23,7 +23,7 @@
 </p>
 
 <br/>
-This is the official implementation of our paper _Grokking at the Edge of Numerical Stability_. Here you can find guidance to reproduce the main results of the paper.
+This is the official implementation of our paper <i>Grokking at the Edge of Numerical Stability</i>. Here you can find guidance to reproduce the main results of the paper.
 <br/>
 
 ## Replicating paper plots
