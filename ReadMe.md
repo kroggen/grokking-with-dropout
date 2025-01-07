@@ -26,7 +26,7 @@
 This is the official implementation of our paper <i>Grokking at the Edge of Numerical Stability</i>. Here you can find guidance to reproduce the main results of the paper.
 <br/>
 
-## Replicating paper plots
+## Replicating our results
 
 Running `run_main_experiments.sh` will generate and log all the metrics necessary to replicate the main figures in the paper. After runing this file you can generate the plots with the code in `paper_plots.ipynb`.
 
