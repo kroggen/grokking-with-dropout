@@ -2,7 +2,6 @@ import argparse
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, Subset
-from torchvision import datasets, transforms
 from torch.utils.data.dataset import random_split
 from datasets import (AlgorithmicDataset, 
                       SparseParityDataset, 
@@ -94,7 +93,7 @@ def evaluate(model, data_loader, loss_function=cross_entropy_float64):
     with torch.no_grad():
         for data, target, *_ in data_loader:
             label_argmax = len(target.shape)!=1
-            output = model(data.to(device).to(float_precision)).to("cpu")#[:, -1]
+            output = model(data.to(device).to(float_precision)).to("cpu")
             if isinstance(model, Transformer):
                 output = output[:,-1]
             loss += loss_function(output, target).item()
@@ -120,16 +119,6 @@ def get_specified_args(parser, args):
                  and arg!="device"}
     
     return specified
-
-class Config:
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-            
-    def __repr__(self):
-        attributes = ', '.join(f"{key}={value!r}" for key, value in self.__dict__.items())
-        return f"Config({attributes})"
-    
 
 def split_dataset(dataset, train_fraction, batch_size):
     total_size = len(dataset)
@@ -157,14 +146,6 @@ def get_dataset(args):
         print(args.num_parity_features, args.num_noise_features)
         dataset = SparseParityDataset(args.num_parity_features, args.num_noise_features, args.num_samples)
         
-    elif args.dataset == "MNIST":
-        train_dataset = datasets.MNIST(root='data', train=True, transform=transforms.ToTensor(), download=True)
-        test_dataset = datasets.MNIST(root='data', train=False, transform=transforms.ToTensor())
-        train_dataset.targets =  torch.nn.functional.one_hot(train_dataset.targets[:args.num_samples], 10)
-        test_dataset.targets =  torch.nn.functional.one_hot(test_dataset.targets[:args.num_samples], 10)
-        train_dataset.data = train_dataset.data[:args.num_samples]
-        test_dataset.data = test_dataset.data[:args.num_samples]
-        
     elif args.dataset == "binary_alg":
         dataset = BinaryAlgorithmicDataset(BINARY_OPERATION_MAP[args.binary_operation], p=args.modulo, input_size=args.input_size, output_size=args.modulo)
     else: 
@@ -173,8 +154,7 @@ def get_dataset(args):
         else:
             dataset = AlgorithmicDataset(BINARY_OPERATION_MAP[args.binary_operation], p=args.modulo, input_size=args.input_size, output_size=args.modulo)
     
-    if not "MNIST" in args.dataset:
-        train_dataset, test_dataset = split_dataset(dataset, args.train_fraction, args.batch_size)
+    train_dataset, test_dataset = split_dataset(dataset, args.train_fraction, args.batch_size)
 
     return train_dataset, test_dataset
 
@@ -185,22 +165,16 @@ def generate_random_one_hot(length):
     return one_hot_vector
 
 def get_model(args):
-    NUM_SPURIOUS = 1
     device = args.device
 
     if args.dataset == "sparse_parity":
         model = MLP(input_size= args.num_parity_features + args.num_noise_features, output_size=2, 
                     hidden_sizes=args.hidden_sizes).to(device) 
 
-    elif args.dataset == "MNIST":
-        model = MLP(input_size=28*28, output_size=10, hidden_sizes=args.hidden_sizes).to(device)
-        with torch.no_grad():
-            for name, p in model.named_parameters():
-                p.data = 100. * p.data
-
     elif args.dataset == "binary_alg":
         model = MLP(input_size=(args.input_size - 1).bit_length()*2, output_size=args.modulo, 
                     hidden_sizes=args.hidden_sizes).to(device)
+
     elif args.dataset == "scalar_alg":
         model = MLP(input_size=2, output_size=args.modulo, hidden_sizes=args.hidden_sizes).to(device)
                     
@@ -215,9 +189,9 @@ def get_model(args):
         
 def get_optimizer(model, args):
     if args.optimizer == "Adam":
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), weight_decay=0, eps=args.adam_epsilon)#, weight_decay=WEIGHT_DECAY)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), weight_decay=0, eps=args.adam_epsilon)
     elif args.optimizer == "AdamW":
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.adam_epsilon, betas=(0.9, args.beta2))#, betas=(0.9, 0.98))
+        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=args.adam_epsilon, betas=(0.9, args.beta2))
     elif args.optimizer == "SGD":
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.2, weight_decay=0)
     else: 
@@ -248,7 +222,7 @@ def parse_args():
                         help='Optimizer to use. Options: AdamW, Adam, SGD. Default is AdamW.')
 
     parser.add_argument('--loss_function', type=str, default='cross_entropy',
-                        help='Loss function to use. Options: cross_entropy, MSE. Default is cross_entropy.')
+                        help='Loss function to use. Options: stablemax, cross_entropy. Default is cross_entropy.')
 
     parser.add_argument('--log_frequency', type=int, default=50,
                         help='Logging frequency (in epochs). Default is 50.')
@@ -264,9 +238,6 @@ def parse_args():
 
     parser.add_argument('--batch_size', type=int, default=128,
                         help='Batch size. Default is 128.')
-
-    parser.add_argument('--freeze_layers', action='store_true', default=False,
-                        help='Freeze layers during training. Default is False.')
 
     parser.add_argument('--full_batch', action='store_true', default=True,
                         help='Use full batch gradient descent. Default is True.')
@@ -295,9 +266,6 @@ def parse_args():
     parser.add_argument('--lambda_l2', type=float, default=0.00005,
                         help='L2 regularization coefficient. Default is 0.00005.')
 
-    parser.add_argument('--scale_down', type=str, default="None",
-                        help='Option to scale down data. Default is None.')
-
     parser.add_argument('--softmax_precision', type=int, default=32,
                         help='Floating point precision for the loss calculation: 16, 32, or 64. Default is 32.')
     
@@ -312,17 +280,17 @@ def parse_args():
 
     parser.add_argument('--orthogonal_gradients', action='store_true', default=False,
                         help='Use orthogonal gradients regularization. Default is False.')
-
-    parser.add_argument('--asc', action='store_true', default=False,
-                        help='Use Anti-Symmetric Connection regularization. Default is False.')
+    
     parser.add_argument('--use_transformer', action='store_true', default=False,
                         help='Use one layer transformer')
-
+    
     parser.add_argument('--device', type=str, default="cpu",
                         help='Device')
     parser.add_argument('--beta2', type=float, default=0.99,
                         help='Beta2 parameter for Adam and AdamW')
     parser.add_argument('--adam_epsilon', type=float, default=1e-25,
                         help='Epsilon value for Adam and AdamW')
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Random seed. Default is 42.')
 
     return parser, parser.parse_args()

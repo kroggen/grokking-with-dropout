@@ -21,9 +21,11 @@ from utils import (evaluate,
 
 
 torch.set_num_threads(5) 
-random.seed(2)
-torch.manual_seed(42)
+
 parser, args = parse_args()
+
+random.seed(args.seed)
+torch.manual_seed(args.seed)
 
 train_precision = FLOAT_PRECISION_MAP[args.train_precision]
 
@@ -98,7 +100,7 @@ start_time = time.time()
 model.to(device).to(train_precision)
 for epoch in range(args.num_epochs):
     #Shuffling the data should not matter for full batch GD, 
-    #but it does matter because of floating point errors
+    #but it sometimes does matter because of floating point errors
     permutation = torch.randperm(all_data.size(0))
     shuffled_data = all_data[permutation]
     shuffled_targets = all_targets[permutation]
@@ -111,7 +113,6 @@ for epoch in range(args.num_epochs):
     loss = loss_function(output, shuffled_targets)
     loss.backward()
     optimizer.step()
-
 
     if epoch % logger.log_frequency == 0:
         logger.log_metrics(

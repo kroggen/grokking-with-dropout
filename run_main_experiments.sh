@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
-# Default device
 DEVICE="cuda:0"
-# Array to hold requested figures
 FIGURES=()
 
 # Parse command line arguments
@@ -10,7 +8,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --device)
             DEVICE="$2"
-            shift
+            shift 2
             ;;
         --figures)
             shift
