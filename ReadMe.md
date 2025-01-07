@@ -17,7 +17,7 @@
     <strong>Under Review</strong></a>
   </p>
   <div align="center">
-    <img src="./assets/teaser.png" alt="Logo" width="100%">
+    <img src="./teaser.png" alt="Logo" width="100%">
   </div>
 
 </p>
