@@ -26,9 +26,28 @@
 This is the official implementation of our paper <i>Grokking at the Edge of Numerical Stability</i>. Here you can find guidance to reproduce the main results of the paper.
 <br/>
 
-## Replicating our results
+## Replicating Our Results
 
-Running `run_main_experiments.sh` will generate and log all the metrics necessary to replicate the main figures in the paper. After runing this file you can generate the plots with the code in `paper_plots.ipynb`.
+To replicate the main figures from our paper, use the `run_main_experiments.sh` script. This script generates and logs all necessary metrics for the primary figures (Figures **1**, **2**, **4**, and **6**), and uses `cuda:0` by default. Once the relevant metrics have been saved, you can generate the figures from the paper using [paper_plots.ipynb](https://github.com/LucasPrietoAl/grokking-at-the-edge-of-numerical-stability/blob/main/paper_plots.ipynb).
+
+### Usage
+
+```bash
+./run_main_experiments.sh [--figures FIGURE_LIST] [--device DEVICE]
+```
+
+## Requirements
+
+1. **Install PyTorch:**
+   
+   Visit the [PyTorch Get Started](https://pytorch.org/get-started/locally/) page to choose the appropriate installation command for your system.
+
+2. **Install Python Packages:**
+   Install the remaining dependencies using `pip`:
+   ```
+   pip install pandas==2.2.3
+   pip install matplotlib==3.10.0
+   ```
 
 ## Citation
 
