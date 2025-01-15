@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size, bias=True):
+    def __init__(self, input_size, hidden_sizes, output_size, bias=True, dropout_rate=0.0):
         super(MLP, self).__init__()
         self.input_size = input_size
         self.hidden_sizes = hidden_sizes
@@ -13,6 +13,7 @@ class MLP(nn.Module):
         self.non_linearity = nn.ReLU()
         self.uses_bias = bias
         self.alpha = 1
+        self.dropout = nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None
         layer_sizes = [input_size] + hidden_sizes + [output_size]
         for i in range(len(hidden_sizes)+1):
             self.layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1], bias=bias))
@@ -22,8 +23,12 @@ class MLP(nn.Module):
         if keep_activations:
             self.activations = []
         for i, layer in enumerate(self.layers):
-            x = self.non_linearity(layer(x)) if i<len(self.layers) -1 else layer(x)
-            if keep_activations and i<len(self.layers):
+            x = layer(x)
+            if i < len(self.layers) - 1:
+                x = self.non_linearity(x)
+                if self.dropout is not None:
+                    x = self.dropout(x)
+            if keep_activations and i < len(self.layers):
                 self.activations.append(x)
         return x*self.alpha
     

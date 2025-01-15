@@ -50,6 +50,7 @@ if run_figure 1; then
     python grokking_experiments.py --lr 0.01 --num_epochs 80000 --log_frequency 5000 --device "$DEVICE" --train_fraction 0.4 --loss_function stablemax --beta2 0.999
     python grokking_experiments.py --lr 0.01 --num_epochs 300 --log_frequency 10 --device "$DEVICE" --train_fraction 0.4 --beta2 0.99 --orthogonal_gradients
     python grokking_experiments.py --lr 0.01 --num_epochs 80000 --log_frequency 5000 --device "$DEVICE" --train_fraction 0.4 --softmax_precision 64
+    python grokking_experiments.py --lr 0.01 --num_epochs 80000 --log_frequency 5000 --device "$DEVICE" --train_fraction 0.4 --softmax_precision 64 --dropout_rate 0.2
 fi
 
 #######################################

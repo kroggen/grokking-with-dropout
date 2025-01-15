@@ -293,4 +293,7 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed. Default is 42.')
 
+    parser.add_argument('--dropout_rate', type=float, default=0.0,
+                        help='Dropout rate for the MLP model. Default is 0.0.')
+
     return parser, parser.parse_args()
